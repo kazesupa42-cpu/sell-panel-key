@@ -19,7 +19,7 @@ INJECTOR_URL = "https://codm-injector-panel-4ewn.onrender.com"
 SCRIPT_URL = "https://codm-script-k82g.onrender.com"  
 
 # ======================
-# STATES FOR CONVERSATION (Nagdagdag ng INPUT_CUSTOM_MAX)
+# STATES FOR CONVERSATION
 # ======================
 (
     SELECT_ACTION, SELECT_DB, 
@@ -139,42 +139,50 @@ def handle_db(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_RESET_KEY
 
-    # ---- FLOW 4: LIST KEYS (PINATIBAY AT BULLETPROOF VERSION) ----
+    # ---- FLOW 4: LIST KEYS ----
     elif action == "list":
         try:
-            # Nagpadala ng headers para masigurong JSON ang ibabato ng Render server
             headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
             response = requests.get(f"{panel_url}/list", headers=headers, timeout=30)
             
-            # Sinisigurong 200 OK ang status code bago magpatuloy
             if response.status_code != 200:
                 context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Server returned status code {response.status_code}")
                 return ConversationHandler.END
                 
             r = response.json()
             
-            # Sinisigurong List talaga ang nakuha nating response data
             if not isinstance(r, list) or len(r) == 0:
                 context.bot.send_message(chat_id=query.message.chat_id, text=f"📋 **[{db_name}]**\nNo active keys found.")
                 return ConversationHandler.END
             
             msg = f"📋 **ACTIVE KEYS [{db_name}]**\n\n"
             
-            # Babasahin lang ang unang 20 keys para maiwasan ang Telegram message length limit crash
-            for k in r[:20]:
-                # Nilagyan ng proteksyon kung sakaling may entry na walang 'key' attribute
-                key_code = k.get('key') or "UNKNOWN_KEY"
+            valid_count = 0
+            for k in r:
+                if valid_count >= 20:
+                    break
+                    
+                if not isinstance(k, dict):
+                    continue
+                    
+                key_code = k.get('key') or k.get('key_code')
+                if not key_code:
+                    continue  
+                    
                 device_info = k.get('device') or 'None'
                 max_slots = k.get('max_devices') or k.get('max') or 1
                 
                 msg += f"`{key_code}` | Dev: {device_info} (Max: {max_slots})\n"
+                valid_count += 1
                 
-            context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
+            if valid_count == 0:
+                context.bot.send_message(chat_id=query.message.chat_id, text=f"📋 **[{db_name}]**\nNo valid keys could be processed.")
+            else:
+                context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
             
         except Exception as e:
-            # Mag-ooutput ito ng eksaktong dahilan sa iyong Render logs para sa debugging
             print(f"🔴 CRITICAL LIST ERROR FOR {db_name}: {e}")
-            context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Failed to fetch keys from {db_name} server due to internal processing error.")
+            context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Failed to fetch keys from {db_name} server.")
             
         return ConversationHandler.END
 
@@ -264,7 +272,6 @@ def execute_custom_max(update: Update, context: CallbackContext):
     db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        # Ipinapasa na natin ang &max= parameter sa url request!
         r = requests.get(f"{panel_url}/customkey?name={name}&duration={duration}&max={max_dev}", timeout=15)
         if r.status_code == 200:
             key_data = r.json()

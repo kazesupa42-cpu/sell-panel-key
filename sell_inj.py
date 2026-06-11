@@ -51,13 +51,8 @@ def is_owner(update: Update):
 # START / MAIN MENU
 # ======================
 def start(update: Update, context: CallbackContext):
-    # Owner check
     if not is_owner(update):
-        update.message.reply_text(
-            "🚫 Access Denied\n\n"
-            "This is a private panel.\n\n"
-            "Owner: @KAZEHAYAMODZ"
-        )
+        update.message.reply_text("🚫 Access Denied. Private Panel.")
         return ConversationHandler.END
 
     # I-reset ang temporary data sa tuwing magsisimula

@@ -15,7 +15,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID"))
 
 # Siguraduhing tama ang mga URLs mo mula sa Render
-INJECTOR_URL = "https://codm-injector-panel-8oa2.onrender.com"
+INJECTOR_URL = "https://codm-injector-panel-4ewn.onrender.com"
 SCRIPT_URL = "https://codm-script-k82g.onrender.com"  # Palitan mo ito ng totoong URL ng script panel mo
 
 # ======================

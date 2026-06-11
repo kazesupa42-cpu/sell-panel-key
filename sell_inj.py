@@ -24,8 +24,9 @@ SCRIPT_URL = "https://codm-script-k82g.onrender.com"
 (
     SELECT_ACTION, SELECT_DB, 
     INPUT_REVOKE_KEY, INPUT_RESET_KEY,
-    INPUT_CUSTOM_NAME, INPUT_CUSTOM_DURATION, INPUT_CUSTOM_MAX
-) = range(7)
+    INPUT_CUSTOM_NAME, INPUT_CUSTOM_DURATION, INPUT_CUSTOM_MAX,
+    INPUT_DELETE_KEY  # Bagong state para sa permanent delete flow
+) = range(8)
 
 # ======================
 # KEEP ALIVE SERVER
@@ -62,7 +63,9 @@ def start(update: Update, context: CallbackContext):
         [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), 
          InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
         [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), 
-         InlineKeyboardButton("📋 List Keys", callback_data="act_list")],
+         InlineKeyboardButton("🗑️ Delete Key", callback_data="act_delete")],
+        [InlineKeyboardButton("🟢 Unrevoked Keys", callback_data="act_listact"), 
+         InlineKeyboardButton("🔴 Revoked History", callback_data="act_listhist")],
         [InlineKeyboardButton("📊 Stats", callback_data="act_stats"), 
          InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
     ]
@@ -102,7 +105,8 @@ def handle_db(update: Update, context: CallbackContext):
         
         keyboard = [
             [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
-            [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), InlineKeyboardButton("📋 List Keys", callback_data="act_list")],
+            [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), InlineKeyboardButton("🗑️ Delete Key", callback_data="act_delete")],
+            [InlineKeyboardButton("🟢 Unrevoked Keys", callback_data="act_listact"), InlineKeyboardButton("🔴 Revoked History", callback_data="act_listhist")],
             [InlineKeyboardButton("📊 Stats", callback_data="act_stats"), InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
         ]
         context.bot.send_message(chat_id=query.message.chat_id, text="🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -129,21 +133,27 @@ def handle_db(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔑 **[{db_name}]**\nSelect Key Duration:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return SELECT_DB
 
-    # ---- FLOW 2: REVOKE KEY ----
+    # ---- FLOW 2: REVOKE KEY (DISABLE ONLY) ----
     elif action == "revoke":
-        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to revoke:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🚫 **Database:** {db_name}\n\n➡️ **Enter key to REVOKE (Disable Only):**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_REVOKE_KEY
 
-    # ---- FLOW 3: RESET KEY ----
+    # ---- FLOW 3: DELETE KEY (PERMANENT ERASE) ----
+    elif action == "delete":
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🗑️ **Database:** {db_name}\n\n➡️ **Enter key to DELETE (Permanently Remove):**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
+        return INPUT_DELETE_KEY
+
+    # ---- FLOW 4: RESET KEY ----
     elif action == "reset":
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_RESET_KEY
 
-    # ---- FLOW 4: LIST KEYS ----
-    elif action == "list":
+    # ---- FLOW 5: LIST UNREVOKED / HISTORY KEYS ----
+    elif action in ["listact", "listhist"]:
         try:
+            target_status = "active" if action == "listact" else "revoked"
             headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
-            response = requests.get(f"{panel_url}/list", headers=headers, timeout=30)
+            response = requests.get(f"{panel_url}/list?status={target_status}", headers=headers, timeout=30)
             
             if response.status_code != 200:
                 context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Server returned status code {response.status_code}")
@@ -152,10 +162,14 @@ def handle_db(update: Update, context: CallbackContext):
             r = response.json()
             
             if not isinstance(r, list) or len(r) == 0:
-                context.bot.send_message(chat_id=query.message.chat_id, text=f"📋 **[{db_name}]**\nNo active keys found.")
+                header_title = "ACTIVE (UNREVOKED)" if target_status == "active" else "REVOKED HISTORY"
+                context.bot.send_message(chat_id=query.message.chat_id, text=f"📋 **[{db_name} - {header_title}]**\nNo keys found.")
                 return ConversationHandler.END
             
-            msg = f"📋 **ACTIVE KEYS [{db_name}]**\n\n"
+            if target_status == "active":
+                msg = f"🟢 **ACTIVE / UNREVOKED KEYS [{db_name}]**\n\n"
+            else:
+                msg = f"🔴 **REVOKED KEYS HISTORY [{db_name}]**\n\n"
             
             valid_count = 0
             for k in r:
@@ -186,7 +200,7 @@ def handle_db(update: Update, context: CallbackContext):
             
         return ConversationHandler.END
 
-    # ---- FLOW 5: STATS ----
+    # ---- FLOW 6: STATS ----
     elif action == "stats":
         try:
             r = requests.get(f"{panel_url}/stats", timeout=15).json()
@@ -196,7 +210,7 @@ def handle_db(update: Update, context: CallbackContext):
             context.bot.send_message(chat_id=query.message.chat_id, text="❌ Failed to fetch stats.")
         return ConversationHandler.END
 
-    # ---- FLOW 6: CUSTOM KEY ----
+    # ---- FLOW 7: CUSTOM KEY ----
     elif action == "custom":
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter Custom Name:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_CUSTOM_NAME
@@ -225,25 +239,27 @@ def execute_revoke(update: Update, context: CallbackContext):
     db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        # Una: Tawagin ang delete route para tuluyang mawala sa Supabase
-        r_delete = requests.get(f"{panel_url}/delete?key={key}", timeout=15)
-        
-        if r_delete.status_code == 200:
-            update.message.reply_text(
-                f"🗑️ **KEY PERMANENTLY DELETED**\n\n"
-                f"**Database:** {db_name}\n"
-                f"**Key:** `{key}`\n"
-                f"**Status:** REMOVED FROM DATABASE\n\n"
-                f"👉 Pwede mo na ulit gamitin ang pangalan na ito sa Custom Key!", 
-                parse_mode="Markdown"
-            )
+        r = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
+        if r.status_code == 200:
+            update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED (Nasa History pa rin)", parse_mode="Markdown")
         else:
-            # Kung sakaling lumang backend pa at walang /delete route, dadaan sa dating revoke
-            r_revoke = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
-            if r_revoke.status_code == 200:
-                update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED (Not Deleted)", parse_mode="Markdown")
-            else:
-                update.message.reply_text(f"❌ Failed to process. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
+            update.message.reply_text(f"❌ Failed to revoke. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
+    except Exception as e:
+        update.message.reply_text(f"❌ Error: {e}")
+    return ConversationHandler.END
+
+def execute_delete(update: Update, context: CallbackContext):
+    key = update.message.text.strip()
+    panel_url = context.user_data.get("panel_url")
+    db_choice = context.user_data.get("db")
+    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
+
+    try:
+        r = requests.get(f"{panel_url}/delete?key={key}", timeout=15)
+        if r.status_code == 200:
+            update.message.reply_text(f"🗑️ **KEY PERMANENTLY DELETED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** REMOVED FROM DATABASE\n\n👉 Pwede mo na ulit gamitin ang pangalan na ito sa Custom Key!", parse_mode="Markdown")
+        else:
+            update.message.reply_text(f"❌ Failed to delete. Key `{key}` not found on {db_name}.", parse_mode="Markdown")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
     return ConversationHandler.END
@@ -331,6 +347,7 @@ def main():
                 CallbackQueryHandler(handle_db, pattern="^back_main")
             ],
             INPUT_REVOKE_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_revoke)],
+            INPUT_DELETE_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_delete)],
             INPUT_RESET_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_reset)],
             INPUT_CUSTOM_NAME: [MessageHandler(Filters.text & ~Filters.command, execute_custom_name)],
             INPUT_CUSTOM_DURATION: [MessageHandler(Filters.text & ~Filters.command, execute_custom_duration)],

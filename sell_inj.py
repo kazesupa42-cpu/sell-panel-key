@@ -2,21 +2,35 @@ import os
 import requests
 from flask import Flask
 from threading import Thread
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
+from telegram.ext import (
+    Updater, CommandHandler, CallbackQueryHandler, 
+    MessageHandler, Filters, ConversationHandler, CallbackContext
+)
 
 # ======================
 # CONFIG
 # ======================
-
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID"))
-PANEL_URL = "https://codm-injector-panel-4ewn.onrender.com"
+
+# Siguraduhing tama ang mga URLs mo mula sa Render
+INJECTOR_URL = "https://codm-injector-panel-8oa2.onrender.com"
+SCRIPT_URL = "https://iyong-script-panel.onrender.com"  # Palitan mo ito ng totoong URL ng script panel mo
+
+# ======================
+# STATES FOR CONVERSATION
+# ======================
+# Gagamitin natin ito para malaman ng bot kung anong data ang hinihintay niya mula sa chat
+(
+    SELECT_ACTION, SELECT_DB, 
+    INPUT_REVOKE_KEY, INPUT_RESET_KEY,
+    INPUT_CUSTOM_NAME, INPUT_CUSTOM_DURATION
+) = range(6)
 
 # ======================
 # KEEP ALIVE SERVER
 # ======================
-
 app = Flask(__name__)
 
 @app.route("/")
@@ -24,342 +38,264 @@ def home():
     return "Bot running!"
 
 def keep_alive():
-    port = int(os.environ.get("PORT",10000))
-    Thread(target=lambda: app.run(host="0.0.0.0",port=port)).start()
+    port = int(os.environ.get("PORT", 10000))
+    Thread(target=lambda: app.run(host="0.0.0.0", port=port)).start()
 
 # ======================
 # OWNER CHECK
 # ======================
-
 def is_owner(update: Update):
     return update.effective_user.id == OWNER_ID
 
 # ======================
-# START COMMAND
+# START / MAIN MENU
 # ======================
 def start(update: Update, context: CallbackContext):
-    # Owner check
     if not is_owner(update):
-        update.message.reply_text(
-            "🚫 Access Denied\n\n"
-            "This is a private key generator panel.\n\n"
-            "Owner: @KAZEHAYAMODZ"
-        )
-        return
+        update.message.reply_text("🚫 Access Denied. Private Panel.")
+        return ConversationHandler.END
 
-    name = update.effective_user.first_name
+    # I-reset ang temporary data sa tuwing magsisimula
+    context.user_data.clear()
 
-    text = f"""
-👋 HELLO, {name}!
-
-🔰 KAZE CODM INJECTOR
-OFFICIAL VIP ACCESS PANEL
-
-Welcome back to the official
-Kaze Injector key generation system.
-
-From this panel you can generate
-your exclusive VIP License Key
-to activate the injector and unlock
-all premium features.
-
-⚡ Instant Key Generation
-🔐 Secure License System
-🚀 Fast & Smooth Activation
-🛡 Protected Access
-
-Owner: @KAZEHAYAMODZ
-
-Please choose an option below to continue.
-"""
-
+    text = "🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:"
+    
     keyboard = [
-        [InlineKeyboardButton("🔑 Generate VIP Key", callback_data="vip")],
-        [InlineKeyboardButton("⏱ Generate Hours Key", callback_data="hours")],
-        [InlineKeyboardButton("📊 Panel Stats", callback_data="stats")]
+        [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), 
+         InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
+        [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), 
+         InlineKeyboardButton("📋 List Keys", callback_data="act_list")],
+        [InlineKeyboardButton("📊 Stats", callback_data="act_stats"), 
+         InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
     ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    update.message.reply_text(text, reply_markup=reply_markup)
+    
+    update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return SELECT_ACTION
 
 # ======================
-# BUTTON HANDLER
+# ACTION HANDLER (Pumili ng Aksyon)
 # ======================
-
-def button(update: Update, context: CallbackContext):
-
+def handle_action(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
+    
+    action = query.data.replace("act_", "")
+    context.user_data["action"] = action  # Itabi kung anong button ang pinindot
+    
+    # May mga aksyon na nangangailangan agad ng Database Selection
+    # Para sa 'gen', 'reset', 'revoke', 'list', 'stats', 'custom'
+    keyboard = [
+        [InlineKeyboardButton("🔰 CODM INJECTOR", callback_data="db_injector")],
+        [InlineKeyboardButton("📜 CODM SCRIPT", callback_data="db_script")],
+        [InlineKeyboardButton("⬅️ Bumalik", callback_data="back_main")]
+    ]
+    
+    query.edit_message_text("🗂 **Select Database:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return SELECT_DB
 
-    if query.from_user.id != OWNER_ID:
-        query.edit_message_text("🚫 Access denied")
-        return
-
-    data = query.data
-
-# VIP MENU
-
-    if data == "vip":
+# ======================
+# DATABASE HANDLER (Pumili ng DB at dumeretso sa Flow)
+# ======================
+def handle_db(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    
+    if query.data == "back_main":
+        # Ibabalik sa start menu
         keyboard = [
-            [InlineKeyboardButton("1 Day",callback_data="gen_1d")],
-            [InlineKeyboardButton("3 Days",callback_data="gen_3d")],
-            [InlineKeyboardButton("7 Days",callback_data="gen_7d")],
-            [InlineKeyboardButton("30 Days",callback_data="gen_30d")],
-            [InlineKeyboardButton("Lifetime",callback_data="gen_lifetime")]
+            [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
+            [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), InlineKeyboardButton("📋 List Keys", callback_data="act_list")],
+            [InlineKeyboardButton("📊 Stats", callback_data="act_stats"), InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
         ]
+        query.edit_message_text("🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return SELECT_ACTION
 
-        query.edit_message_text(
-            "🔑 Select VIP Key Duration",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        
-# HOURS MENU
+    db_choice = query.data.replace("db_", "")
+    context.user_data["db"] = db_choice
+    context.user_data["panel_url"] = INJECTOR_URL if db_choice == "injector" else SCRIPT_URL
+    
+    action = context.user_data.get("action")
+    panel_url = context.user_data.get("panel_url")
+    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
-    elif data == "hours":
-        keyboard=[]
-        for i in range(1,25):
-            keyboard.append(
-                [InlineKeyboardButton(f"{i} Hour",callback_data=f"gen_{i}h")]
-            )
-        query.edit_message_text(
-            "⏱ Select Hours Duration",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+    # ---- FLOW 1: GENERATE KEY (DURATIONS MENU) ----
+    if action == "gen":
+        keyboard = [
+            [InlineKeyboardButton("1 Day", callback_data="dur_1d"), InlineKeyboardButton("3 Days", callback_data="dur_3d")],
+            [InlineKeyboardButton("7 Days", callback_data="dur_7d"), InlineKeyboardButton("30 Days", callback_data="dur_30d")],
+            [InlineKeyboardButton("Lifetime", callback_data="dur_lifetime")]
+        ]
+        query.edit_message_text(f"🔑 **[{db_name}]**\nSelect Key Duration:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return SELECT_DB # Mananatili dito para sa duration click
 
-# STATS
+    # ---- FLOW 2: REVOKE KEY (INPUT PROMPT) ----
+    elif action == "revoke":
+        query.edit_message_text(f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to revoke:**", reply_markup=ForceReply(selective=True))
+        return INPUT_REVOKE_KEY
 
-    elif data == "stats":
+    # ---- FLOW 3: RESET KEY (INPUT PROMPT) ----
+    elif action == "reset":
+        query.edit_message_text(f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True))
+        return INPUT_RESET_KEY
+
+    # ---- FLOW 4: LIST KEYS ----
+    elif action == "list":
         try:
-            r=requests.get(f"{PANEL_URL}/stats")
-            data=r.json()
-            msg=f"""
-📊 PANEL STATISTICS
-
-Total Keys: {data['total_keys']}
-Active Keys: {data['active_keys']}
-Expired Keys: {data['expired_keys']}
-"""
-            query.edit_message_text(msg)
-        except:
-            query.edit_message_text("❌ Failed to get stats")
-
-# GENERATE KEY (FIXED)
-
-    elif data.startswith("gen_"):
-
-        duration = data.replace("gen_","")
-
-        try:
-            # Step 1: get token
-            token = requests.get(f"{PANEL_URL}/token", timeout=15).text.strip()
-
-            # Step 2: get key
-            r = requests.get(f"{PANEL_URL}/getkey?token={token}&src=bot&duration={duration}", timeout=15)
-            if r.status_code != 200:
-                query.edit_message_text("❌ Key generation failed")
-                return
-
-            key_data = r.json()
-            key = key_data.get("key", "ERROR")
-
-            msg=f"""
-🔑 𝗞𝗘𝗬 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗘𝗗
-━━━━━━━━━━━━━━━━━━━━
-🔑 KEY: `{key}`
-⏳ EXPIRATION: {duration}
-🚫 DEVICE AVAILABLE: 1 Device
-📊 STATUS: SAFE
-🔰 CODM INJECTOR V2
-
-📝 Tap to copy your key
-Duration will start when license login.
-
-📲𝙁𝙚𝙚𝙙𝙗𝙖𝙘𝙠: @KAZEHAYAMODZ
-🫶𝑻𝑯𝑨𝑵𝑲 𝒀𝑶𝑼 𝑭𝑶𝑹 𝑻𝑹𝑼𝑺𝑻𝑰𝑵𝑮
-"""
-
+            r = requests.get(f"{panel_url}/list", timeout=15).json()
+            if not r:
+                query.edit_message_text(f"📋 **[{db_name}]**\nNo active keys found.")
+                return ConversationHandler.END
+            msg = f"📋 **ACTIVE KEYS [{db_name}]**\n\n"
+            for k in r[:20]:
+                msg += f"`{k['key']}` | Dev: {k['device'] or 'None'}\n"
             query.edit_message_text(msg, parse_mode="Markdown")
+        except:
+            query.edit_message_text("❌ Failed to fetch keys from server.")
+        return ConversationHandler.END
 
+    # ---- FLOW 5: STATS ----
+    elif action == "stats":
+        try:
+            r = requests.get(f"{panel_url}/stats", timeout=15).json()
+            msg = f"📊 **PANEL STATISTICS [{db_name}]**\n\nTotal Keys: {r['total_keys']}\nActive Keys: {r['active_keys']}\nExpired Keys: {r['expired_keys']}"
+            query.edit_message_text(msg, parse_mode="Markdown")
+        except:
+            query.edit_message_text("❌ Failed to fetch stats.")
+        return ConversationHandler.END
+
+    # ---- FLOW 6: CUSTOM KEY (INPUT NAME PROMPT) ----
+    elif action == "custom":
+        query.edit_message_text(f"🔰 **Database:** {db_name}\n\n➡️ **Enter Custom Name:**", reply_markup=ForceReply(selective=True))
+        return INPUT_CUSTOM_NAME
+
+    # Pagproseso ng Standard Duration Generation matapos pindutin ang oras
+    if query.data.startswith("dur_"):
+        duration = query.data.replace("dur_", "")
+        try:
+            token = requests.get(f"{panel_url}/token", timeout=15).json().get("token")
+            r = requests.get(f"{panel_url}/getkey?token={token}&src=bot&duration={duration}", timeout=15).json()
+            key = r.get("key", "ERROR")
+            
+            msg = f"🔑 **KEY GENERATED**\n━━━━━━━━━━━━━━━━━━━━\n🔰 DB: `{db_name}`\n🔑 KEY: `{key}`\n⏳ EXPIRATION: `{duration}`\n🚫 SLOTS: 1 Device\n━━━━━━━━━━━━━━━━━━━━"
+            query.edit_message_text(msg, parse_mode="Markdown")
         except Exception as e:
-            query.edit_message_text(f"❌ Error: {e}")
+            query.edit_message_text(f"❌ Error Generating Key: {e}")
+        return ConversationHandler.END
 
 # ======================
-# REVOKE COMMAND
+# EXECUTE REVOKE (Text Input)
 # ======================
-def revoke(update: Update, context: CallbackContext):
-
-    if not is_owner(update):
-        return
-
-    if not context.args:
-        update.message.reply_text("Usage:\n/revoke KEY")
-        return
-
-    key=context.args[0]
+def execute_revoke(update: Update, context: CallbackContext):
+    key = update.message.text.strip()
+    panel_url = context.user_data.get("panel_url")
+    db_choice = context.user_data.get("db")
+    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        r=requests.get(f"{PANEL_URL}/revoke?key={key}", timeout=15)
-        if r.status_code==200:
-            update.message.reply_text(f"""
-🚫 KEY REVOKED
-
-KEY: `{key}`
-STATUS: DISABLED
-""",parse_mode="Markdown")
-        else:
-            update.message.reply_text("❌ Failed to revoke key")
-    except Exception as e:
-        update.message.reply_text(f"❌ Error: {e}")
-
-# ======================
-# RESET COMMAND
-# ======================
-def reset(update: Update, context: CallbackContext):
-    if not is_owner(update):
-        return
-
-    if not context.args:
-        update.message.reply_text("Usage:\n/reset KEY")
-        return
-
-    key = context.args[0]
-
-    try:
-        # Kakantigin nito ang bagong /reset link sa Render Panel mo
-        r = requests.get(f"{PANEL_URL}/reset?key={key}", timeout=15)
+        r = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
         if r.status_code == 200:
-            update.message.reply_text(f"""
-🔄 𝗞𝗘𝗬 𝗗𝗘𝗩𝗜𝗖𝗘 𝗥𝗘𝗦𝗘𝗧
-
-KEY: `{key}`
-STATUS: UNLOCKED (Ready for new device)
-""", parse_mode="Markdown")
-        elif r.status_code == 404:
-            update.message.reply_text("❌ Key not found in database.")
+            update.message.reply_text(
+                f"🚫 **KEY REVOKED**\n\n"
+                f"**Database:** {db_name}\n"
+                f"**Key:** `{key}`\n"
+                f"**Status:** DISABLED", 
+                parse_mode="Markdown"
+            )
         else:
-            update.message.reply_text("❌ Failed to reset key device.")
+            update.message.reply_text("❌ Failed to revoke. Key might not exist.")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
-        
-# ======================
-# LIST KEYS
-# ======================
-def listkeys(update: Update, context: CallbackContext):
+    return ConversationHandler.END
 
-    if not is_owner(update):
-        return
+# ======================
+# EXECUTE RESET (Text Input)
+# ======================
+def execute_reset(update: Update, context: CallbackContext):
+    key = update.message.text.strip()
+    panel_url = context.user_data.get("panel_url")
+    db_choice = context.user_data.get("db")
+    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        r=requests.get(f"{PANEL_URL}/list", timeout=15)
-        data=r.json()
-        if not data:
-            update.message.reply_text("No active keys.")
-            return
-
-        msg="🔑 ACTIVE KEYS\n\n"
-        for k in data[:20]:
-            msg+=f"{k['key']} | Device:{k['device']}\n"
-        update.message.reply_text(msg)
-
-    except:
-        update.message.reply_text("❌ Failed to fetch keys")
+        r = requests.get(f"{panel_url}/reset?key={key}", timeout=15)
+        if r.status_code == 200:
+            update.message.reply_text(
+                f"🔄 **KEY DEVICE RESET**\n\n"
+                f"**Database:** {db_name}\n"
+                f"**Key:** `{key}`\n"
+                f"**Status:** UNLOCKED (Ready for new device)", 
+                parse_mode="Markdown"
+            )
+        else:
+            update.message.reply_text("❌ Failed to reset. Key not found.")
+    except Exception as e:
+        update.message.reply_text(f"❌ Error: {e}")
+    return ConversationHandler.END
 
 # ======================
-# STATS COMMAND
+# EXECUTE CUSTOM KEY (Text Inputs)
 # ======================
-def stats(update: Update, context: CallbackContext):
+def execute_custom_name(update: Update, context: CallbackContext):
+    context.user_data["custom_name"] = update.message.text.strip()
+    update.message.reply_text("➡️ **Enter Duration (e.g., 1d, 7d, 30d, lifetime):**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
+    return INPUT_CUSTOM_DURATION
 
-    if not is_owner(update):
-        return
+def execute_custom_duration(update: Update, context: CallbackContext):
+    duration = update.message.text.strip()
+    name = context.user_data.get("custom_name")
+    panel_url = context.user_data.get("panel_url")
+    db_choice = context.user_data.get("db")
+    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        r=requests.get(f"{PANEL_URL}/stats", timeout=15)
-        data=r.json()
-        msg=f"""
-📊 PANEL STATS
-
-Total Keys: {data['total_keys']}
-Active Keys: {data['active_keys']}
-Expired Keys: {data['expired_keys']}
-"""
-        update.message.reply_text(msg)
-
-    except:
-        update.message.reply_text("❌ Failed to get stats")
-        
-# ======================
-# CUSTOM KEY COMMAND
-# ======================
-def customkey(update: Update, context: CallbackContext):
-    if not is_owner(update):
-        return
-
-    # Dapat may kasamang PANGALAN at DURATION (e.g., /customkey Kaze-VIP-Promo 7d)
-    if len(context.args) < 2:
-        update.message.reply_text(
-            "⚠️ Usage:\n"
-            "`/customkey [NAME] [DURATION]`\n\n"
-            "Example:\n"
-            "`/customkey Kaze-Special-Giveaway 3d`",
-            parse_mode="Markdown"
-        )
-        return
-
-    name = context.args[0]
-    duration = context.args[1]
-
-    try:
-        # Pasa ang request sa Render Panel natin
-        r = requests.get(f"{PANEL_URL}/customkey?name={name}&duration={duration}", timeout=15)
-        
+        r = requests.get(f"{panel_url}/customkey?name={name}&duration={duration}", timeout=15)
         if r.status_code == 200:
             key_data = r.json()
-            key = key_data.get("key")
+            generated_key = key_data.get("key")
             
-            msg = f"""
-🎁 𝗖𝗨𝗦𝗧𝗢𝗠 𝗞𝗘𝗬 𝗖𝗥𝗘𝗔𝗧𝗘𝗗
-━━━━━━━━━━━━━━━━━━━━
-🔑 KEY: `{key}`
-⏳ EXPIRATION: {duration}
-🚫 DEVICE AVAILABLE: 1 Device
-📊 STATUS: PREMIUM CUSTOM
-🔰 CODM INJECTOR V2
-
-📝 Tap to copy your custom key.
-Enjoy using special VIP features!
-
-📲𝙁𝙚𝙚𝙙𝙗𝙖𝙘𝙠: @KAZEHAYAMODZ
-"""
+            msg = f"🎁 **CUSTOM KEY CREATED**\n━━━━━━━━━━━━━━━━━━━━\n🔰 DB: `{db_name}`\n🔑 KEY: `{generated_key}`\n⏳ DURATION: `{duration}`\n🚫 SLOTS: 1 Device\n━━━━━━━━━━━━━━━━━━━━"
             update.message.reply_text(msg, parse_mode="Markdown")
-            
-        elif r.status_code == 409:
-            update.message.reply_text("❌ Error: May kaparehas na pangalan na ang key na 'yan sa database.")
         else:
-            update.message.reply_text("❌ Failed to create custom key.")
-            
+            update.message.reply_text("❌ Failed to create custom key. Name might already exist.")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
-        
+    return ConversationHandler.END
+
+# Cancel Conversation
+def cancel(update: Update, context: CallbackContext):
+    update.message.reply_text("❌ Process cancelled.")
+    return ConversationHandler.END
+
 # ======================
-# MAIN
+# MAIN FUNCTION
 # ======================
 def main():
-    updater=Updater(BOT_TOKEN,use_context=True)
-    dp=updater.dispatcher
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-    dp.add_handler(CommandHandler("start",start))
-    dp.add_handler(CommandHandler("revoke",revoke))
-    dp.add_handler(CommandHandler("list",listkeys))
-    dp.add_handler(CommandHandler("stats",stats))
-    dp.add_handler(CommandHandler("reset", reset))
-    dp.add_handler(CommandHandler("customkey", customkey))
-    dp.add_handler(CallbackQueryHandler(button))
+    # Setup Conversation Handler para sa Flow
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            SELECT_ACTION: [CallbackQueryHandler(handle_action, pattern="^act_")],
+            SELECT_DB: [
+                CallbackQueryHandler(handle_db, pattern="^db_"),
+                CallbackQueryHandler(handle_db, pattern="^dur_"),
+                CallbackQueryHandler(handle_db, pattern="^back_main")
+            ],
+            INPUT_REVOKE_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_revoke)],
+            INPUT_RESET_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_reset)],
+            INPUT_CUSTOM_NAME: [MessageHandler(Filters.text & ~Filters.command, execute_custom_name)],
+            INPUT_CUSTOM_DURATION: [MessageHandler(Filters.text & ~Filters.command, execute_custom_duration)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+
+    dp.add_handler(conv_handler)
 
     updater.start_polling()
     updater.idle()
 
-if __name__=="__main__":
+if __name__ == "__main__":
     keep_alive()
     main()
-    

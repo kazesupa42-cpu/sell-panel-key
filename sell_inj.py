@@ -266,6 +266,21 @@ def cancel(update: Update, context: CallbackContext):
     update.message.reply_text("❌ Process cancelled.")
     return ConversationHandler.END
 
+import logging
+
+# Opsyonal: I-enable ang logging para mas makita mo ang detalye sa Render logs
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def error_handler(update: Update, context: CallbackContext):
+    """Sinasalo nito ang mga error na dulot ng Network TimedOut o Telegram API issues."""
+    logger.warning(f'Update "{update}" caused error "{context.error}"')
+    
+    # Kung network timeout lang, pwedeng hayaan lang natin para mag-retry ang bot nang kusa
+    if "Timed out" in str(context.error):
+        print("⚠️ Telegram network timeout. Retrying...")
+        return
+        
 # ======================
 # MAIN FUNCTION
 # ======================
@@ -292,10 +307,13 @@ def main():
     )
 
     dp.add_handler(conv_handler)
+    
+    # 🌟 DAGDAGAN MO NITO DITO SA DULO:
+    dp.add_error_handler(error_handler)
 
     updater.start_polling()
     updater.idle()
-
+    
 if __name__ == "__main__":
     keep_alive()
     main()

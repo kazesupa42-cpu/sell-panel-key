@@ -58,13 +58,39 @@ def start(update: Update, context: CallbackContext):
 
     context.user_data.clear()
 
-    text = "🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:"
+    text = """━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          KAZEHAYAMODZ PANEL          
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM STATUS]
+> ALL SYSTEMS OPERATIONAL
+> STATUS: ONLINE // SECURE
+
+[CORE SERVICES]
+> CODM ADVANCED INJECTOR 
+> CODM PREMIUM SCRIPT 
+
+[SECURITY]
+> ACCESS LEVEL: RESTRICTED
+> MEMBERSHIP: VIP PRIVATE ONLY
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+System Features:
+✓ Optimized management interface
+✓ Configuration controls
+✓ Maintenance automation
+✓ Stability monitoring
+✓ Performance synchronization
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Please select an option from the menu Kaze:"""
     
     keyboard = [
         [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), 
          InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
         [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), 
-         InlineKeyboardButton("🟢 Unrevoke Key", callback_data="act_unrevoke")], # <--- BAGONG BUTTON
+         InlineKeyboardButton("🟢 Unrevoke Key", callback_data="act_unrevoke")],
         [InlineKeyboardButton("🗑️ Delete Key", callback_data="act_delete"),
          InlineKeyboardButton("📊 Stats", callback_data="act_stats")],
         [InlineKeyboardButton("🟢 Unrevoked Keys", callback_data="act_listact"), 

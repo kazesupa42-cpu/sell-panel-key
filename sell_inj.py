@@ -25,8 +25,9 @@ SCRIPT_URL = "https://codm-script-k82g.onrender.com"
     SELECT_ACTION, SELECT_DB, 
     INPUT_REVOKE_KEY, INPUT_RESET_KEY,
     INPUT_CUSTOM_NAME, INPUT_CUSTOM_DURATION, INPUT_CUSTOM_MAX,
-    INPUT_DELETE_KEY  # Bagong state para sa permanent delete flow
-) = range(8)
+    INPUT_DELETE_KEY,
+    INPUT_UNREVOKE_KEY  # <--- Idagdag ito
+) = range(9)            # <--- Gawing 9
 
 # ======================
 # KEEP ALIVE SERVER

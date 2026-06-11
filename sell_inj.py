@@ -16,7 +16,7 @@ OWNER_ID = int(os.environ.get("OWNER_ID"))
 
 # Siguraduhing tama ang mga URLs mo mula sa Render
 INJECTOR_URL = "https://codm-injector-panel-8oa2.onrender.com"
-SCRIPT_URL = "https://iyong-script-panel.onrender.com"  # Palitan mo ito ng totoong URL ng script panel mo
+SCRIPT_URL = "https://codm-script-k82g.onrender.com"  # Palitan mo ito ng totoong URL ng script panel mo
 
 # ======================
 # STATES FOR CONVERSATION
@@ -51,8 +51,13 @@ def is_owner(update: Update):
 # START / MAIN MENU
 # ======================
 def start(update: Update, context: CallbackContext):
+    # Owner check
     if not is_owner(update):
-        update.message.reply_text("🚫 Access Denied. Private Panel.")
+        update.message.reply_text(
+            "🚫 Access Denied\n\n"
+            "This is a private panel.\n\n"
+            "Owner: @KAZEHAYAMODZ"
+        )
         return ConversationHandler.END
 
     # I-reset ang temporary data sa tuwing magsisimula
@@ -85,9 +90,9 @@ def handle_action(update: Update, context: CallbackContext):
     # May mga aksyon na nangangailangan agad ng Database Selection
     # Para sa 'gen', 'reset', 'revoke', 'list', 'stats', 'custom'
     keyboard = [
-        [InlineKeyboardButton("🔰 CODM INJECTOR", callback_data="db_injector")],
-        [InlineKeyboardButton("📜 CODM SCRIPT", callback_data="db_script")],
-        [InlineKeyboardButton("⬅️ Bumalik", callback_data="back_main")]
+        [InlineKeyboardButton("🔥 CODM INJECTOR", callback_data="db_injector")],
+        [InlineKeyboardButton("🔥 CODM SCRIPT", callback_data="db_script")],
+        [InlineKeyboardButton("⬅️ BACK", callback_data="back_main")]
     ]
     
     query.edit_message_text("🗂 **Select Database:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")

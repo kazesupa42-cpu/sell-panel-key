@@ -63,11 +63,12 @@ def start(update: Update, context: CallbackContext):
         [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), 
          InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
         [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), 
-         InlineKeyboardButton("🗑️ Delete Key", callback_data="act_delete")],
+         InlineKeyboardButton("🟢 Unrevoke Key", callback_data="act_unrevoke")], # <--- BAGONG BUTTON
+        [InlineKeyboardButton("🗑️ Delete Key", callback_data="act_delete"),
+         InlineKeyboardButton("📊 Stats", callback_data="act_stats")],
         [InlineKeyboardButton("🟢 Unrevoked Keys", callback_data="act_listact"), 
          InlineKeyboardButton("🔴 Revoked History", callback_data="act_listhist")],
-        [InlineKeyboardButton("📊 Stats", callback_data="act_stats"), 
-         InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
+        [InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
     ]
     
     update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -147,6 +148,11 @@ def handle_db(update: Update, context: CallbackContext):
     elif action == "reset":
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_RESET_KEY
+
+    # ---- NEW FLOW: UNREVOKE KEY ----
+    elif action == "unrevoke":
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🟢 **Database:** {db_name}\n\n➡️ **Enter key to UNREVOKE (Make Active Again):**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
+        return INPUT_UNREVOKE_KEY
 
     # ---- FLOW 5: LIST UNREVOKED / HISTORY KEYS ----
     elif action in ["listact", "listhist"]:
@@ -244,6 +250,22 @@ def execute_revoke(update: Update, context: CallbackContext):
             update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED (Nasa History pa rin)", parse_mode="Markdown")
         else:
             update.message.reply_text(f"❌ Failed to revoke. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
+    except Exception as e:
+        update.message.reply_text(f"❌ Error: {e}")
+    return ConversationHandler.END
+
+def execute_unrevoke(update: Update, context: CallbackContext):
+    key = update.message.text.strip()
+    panel_url = context.user_data.get("panel_url")
+    db_choice = context.user_data.get("db")
+    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
+
+    try:
+        r = requests.get(f"{panel_url}/unrevoke?key={key}", timeout=15)
+        if r.status_code == 200:
+            update.message.reply_text(f"🟢 **KEY UNREVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** ACTIVE AGAIN (Magagamit na uli!)", parse_mode="Markdown")
+        else:
+            update.message.reply_text(f"❌ Failed to unrevoke. Key `{key}` not found on {db_name}.", parse_mode="Markdown")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
     return ConversationHandler.END
@@ -348,6 +370,7 @@ def main():
             ],
             INPUT_REVOKE_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_revoke)],
             INPUT_DELETE_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_delete)],
+            INPUT_UNREVOKE_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_unrevoke)], # <--- Idagdag itong linya!
             INPUT_RESET_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_reset)],
             INPUT_CUSTOM_NAME: [MessageHandler(Filters.text & ~Filters.command, execute_custom_name)],
             INPUT_CUSTOM_DURATION: [MessageHandler(Filters.text & ~Filters.command, execute_custom_duration)],

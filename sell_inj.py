@@ -91,9 +91,9 @@ Please select an option from the menu Kaze:"""
          InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
         [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), 
          InlineKeyboardButton("🟢 Unrevoke Key", callback_data="act_unrevoke")],
-        [InlineKeyboardButton("🗑️ Delete Key", callback_data="act_delete"),
+        [InlineKeyboardButton("❌ Delete Key", callback_data="act_delete"),
          InlineKeyboardButton("📊 Stats", callback_data="act_stats")],
-        [InlineKeyboardButton("🟢 Unrevoked Keys", callback_data="act_listact"), 
+        [InlineKeyboardButton("⚡ List Keys", callback_data="act_listact"), 
          InlineKeyboardButton("🔴 Revoked History", callback_data="act_listhist")],
         [InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
     ]

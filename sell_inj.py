@@ -139,25 +139,43 @@ def handle_db(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_RESET_KEY
 
-    # ---- FLOW 4: LIST KEYS (HANAPIN AT PALITAN ITO SA PANEL_BOT.PY) ----
+    # ---- FLOW 4: LIST KEYS (PINATIBAY AT BULLETPROOF VERSION) ----
     elif action == "list":
         try:
-            r = requests.get(f"{panel_url}/list", timeout=30).json()
-            if not r:
+            # Nagpadala ng headers para masigurong JSON ang ibabato ng Render server
+            headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
+            response = requests.get(f"{panel_url}/list", headers=headers, timeout=30)
+            
+            # Sinisigurong 200 OK ang status code bago magpatuloy
+            if response.status_code != 200:
+                context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Server returned status code {response.status_code}")
+                return ConversationHandler.END
+                
+            r = response.json()
+            
+            # Sinisigurong List talaga ang nakuha nating response data
+            if not isinstance(r, list) or len(r) == 0:
                 context.bot.send_message(chat_id=query.message.chat_id, text=f"📋 **[{db_name}]**\nNo active keys found.")
                 return ConversationHandler.END
             
             msg = f"📋 **ACTIVE KEYS [{db_name}]**\n\n"
+            
+            # Babasahin lang ang unang 20 keys para maiwasan ang Telegram message length limit crash
             for k in r[:20]:
-                # Ginamitan natin ng .get() para kahit 'max' o 'max_devices' ang ibalik ng server, hindi sasabog ang bot
+                # Nilagyan ng proteksyon kung sakaling may entry na walang 'key' attribute
+                key_code = k.get('key') or "UNKNOWN_KEY"
+                device_info = k.get('device') or 'None'
                 max_slots = k.get('max_devices') or k.get('max') or 1
-                msg += f"`{k['key']}` | Dev: {k['device'] or 'None'} (Max: {max_slots})\n"
+                
+                msg += f"`{key_code}` | Dev: {device_info} (Max: {max_slots})\n"
                 
             context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
+            
         except Exception as e:
-            # Mas maganda kung i-print natin ang totoong error para makita mo sa Render logs kung bakit nag-fail
-            print(f"List Error: {e}")
-            context.bot.send_message(chat_id=query.message.chat_id, text="❌ Failed to fetch keys from server.")
+            # Mag-ooutput ito ng eksaktong dahilan sa iyong Render logs para sa debugging
+            print(f"🔴 CRITICAL LIST ERROR FOR {db_name}: {e}")
+            context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Failed to fetch keys from {db_name} server due to internal processing error.")
+            
         return ConversationHandler.END
 
     # ---- FLOW 5: STATS ----

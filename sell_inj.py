@@ -1,5 +1,6 @@
 import os
 import requests
+import logging
 from flask import Flask
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
@@ -14,19 +15,17 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID"))
 
-# Siguraduhing tama ang mga URLs mo mula sa Render
 INJECTOR_URL = "https://codm-injector-panel-4ewn.onrender.com"
-SCRIPT_URL = "https://codm-script-k82g.onrender.com"  # Palitan mo ito ng totoong URL ng script panel mo
+SCRIPT_URL = "https://codm-script-k82g.onrender.com"  
 
 # ======================
-# STATES FOR CONVERSATION
+# STATES FOR CONVERSATION (Nagdagdag ng INPUT_CUSTOM_MAX)
 # ======================
-# Gagamitin natin ito para malaman ng bot kung anong data ang hinihintay niya mula sa chat
 (
     SELECT_ACTION, SELECT_DB, 
     INPUT_REVOKE_KEY, INPUT_RESET_KEY,
-    INPUT_CUSTOM_NAME, INPUT_CUSTOM_DURATION
-) = range(6)
+    INPUT_CUSTOM_NAME, INPUT_CUSTOM_DURATION, INPUT_CUSTOM_MAX
+) = range(7)
 
 # ======================
 # KEEP ALIVE SERVER
@@ -55,7 +54,6 @@ def start(update: Update, context: CallbackContext):
         update.message.reply_text("🚫 Access Denied. Private Panel.")
         return ConversationHandler.END
 
-    # I-reset ang temporary data sa tuwing magsisimula
     context.user_data.clear()
 
     text = "🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:"
@@ -73,17 +71,15 @@ def start(update: Update, context: CallbackContext):
     return SELECT_ACTION
 
 # ======================
-# ACTION HANDLER (Pumili ng Aksyon)
+# ACTION HANDLER
 # ======================
 def handle_action(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
     
     action = query.data.replace("act_", "")
-    context.user_data["action"] = action  # Itabi kung anong button ang pinindot
+    context.user_data["action"] = action  
     
-    # May mga aksyon na nangangailangan agad ng Database Selection
-    # Para sa 'gen', 'reset', 'revoke', 'list', 'stats', 'custom'
     keyboard = [
         [InlineKeyboardButton("🔥 CODM INJECTOR", callback_data="db_injector")],
         [InlineKeyboardButton("🔥 CODM SCRIPT", callback_data="db_script")],
@@ -94,14 +90,13 @@ def handle_action(update: Update, context: CallbackContext):
     return SELECT_DB
 
 # ======================
-# DATABASE HANDLER (Pumili ng DB at dumeretso sa Flow)
+# DATABASE HANDLER
 # ======================
 def handle_db(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
     
     if query.data == "back_main":
-        # I-delete ang lumang menu para malinis
         try: query.message.delete()
         except: pass
         
@@ -121,29 +116,27 @@ def handle_db(update: Update, context: CallbackContext):
     panel_url = context.user_data.get("panel_url")
     db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
-    # Burahin ang lumang database selection message para hindi mag-conflict sa text edit
     try: query.message.delete()
     except: pass
 
-    # ---- FLOW 1: GENERATE KEY (DURATIONS MENU) ----
+    # ---- FLOW 1: GENERATE KEY ----
     if action == "gen":
         keyboard = [
             [InlineKeyboardButton("1 Day", callback_data="dur_1d"), InlineKeyboardButton("3 Days", callback_data="dur_3d")],
             [InlineKeyboardButton("7 Days", callback_data="dur_7d"), InlineKeyboardButton("30 Days", callback_data="dur_30d")],
             [InlineKeyboardButton("Lifetime", callback_data="dur_lifetime")]
         ]
-        # Gumamit ng send_message sa halip na edit_message_text
         context.bot.send_message(chat_id=query.message.chat_id, text=f"🔑 **[{db_name}]**\nSelect Key Duration:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return SELECT_DB
 
-    # ---- FLOW 2: REVOKE KEY (INPUT PROMPT) ----
+    # ---- FLOW 2: REVOKE KEY ----
     elif action == "revoke":
-        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to revoke:**", reply_markup=ForceReply(selective=True))
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to revoke:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_REVOKE_KEY
 
-    # ---- FLOW 3: RESET KEY (INPUT PROMPT) ----
+    # ---- FLOW 3: RESET KEY ----
     elif action == "reset":
-        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True))
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_RESET_KEY
 
     # ---- FLOW 4: LIST KEYS ----
@@ -155,7 +148,7 @@ def handle_db(update: Update, context: CallbackContext):
                 return ConversationHandler.END
             msg = f"📋 **ACTIVE KEYS [{db_name}]**\n\n"
             for k in r[:20]:
-                msg += f"`{k['key']}` | Dev: {k['device'] or 'None'}\n"
+                msg += f"`{k['key']}` | Dev: {k['device'] or 'None'} (Max: {k.get('max', 1)})\n"
             context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
         except:
             context.bot.send_message(chat_id=query.message.chat_id, text="❌ Failed to fetch keys from server.")
@@ -173,10 +166,10 @@ def handle_db(update: Update, context: CallbackContext):
 
     # ---- FLOW 6: CUSTOM KEY ----
     elif action == "custom":
-        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter Custom Name:**", reply_markup=ForceReply(selective=True))
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter Custom Name:**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
         return INPUT_CUSTOM_NAME
 
-    # Pagproseso ng Standard Duration Generation matapos pindutin ang oras
+    # Standard Duration Handler
     if query.data.startswith("dur_"):
         duration = query.data.replace("dur_", "")
         try:
@@ -191,7 +184,7 @@ def handle_db(update: Update, context: CallbackContext):
         return ConversationHandler.END
 
 # ======================
-# EXECUTE REVOKE (Text Input)
+# EXECUTE FUNCTIONS
 # ======================
 def execute_revoke(update: Update, context: CallbackContext):
     key = update.message.text.strip()
@@ -202,22 +195,13 @@ def execute_revoke(update: Update, context: CallbackContext):
     try:
         r = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
         if r.status_code == 200:
-            update.message.reply_text(
-                f"🚫 **KEY REVOKED**\n\n"
-                f"**Database:** {db_name}\n"
-                f"**Key:** `{key}`\n"
-                f"**Status:** DISABLED", 
-                parse_mode="Markdown"
-            )
+            update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED", parse_mode="Markdown")
         else:
-            update.message.reply_text("❌ Failed to revoke. Key might not exist.")
+            update.message.reply_text(f"❌ Failed to revoke. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
     return ConversationHandler.END
 
-# ======================
-# EXECUTE RESET (Text Input)
-# ======================
 def execute_reset(update: Update, context: CallbackContext):
     key = update.message.text.strip()
     panel_url = context.user_data.get("panel_url")
@@ -227,21 +211,15 @@ def execute_reset(update: Update, context: CallbackContext):
     try:
         r = requests.get(f"{panel_url}/reset?key={key}", timeout=15)
         if r.status_code == 200:
-            update.message.reply_text(
-                f"🔄 **KEY DEVICE RESET**\n\n"
-                f"**Database:** {db_name}\n"
-                f"**Key:** `{key}`\n"
-                f"**Status:** UNLOCKED (Ready for new device)", 
-                parse_mode="Markdown"
-            )
+            update.message.reply_text(f"🔄 **KEY DEVICE RESET**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** UNLOCKED", parse_mode="Markdown")
         else:
-            update.message.reply_text("❌ Failed to reset. Key not found.")
+            update.message.reply_text(f"❌ Failed to reset. Key `{key}` not found on {db_name}.", parse_mode="Markdown")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
     return ConversationHandler.END
 
 # ======================
-# EXECUTE CUSTOM KEY (Text Inputs)
+# EXECUTE CUSTOM KEY (3-STEPS FLOW)
 # ======================
 def execute_custom_name(update: Update, context: CallbackContext):
     context.user_data["custom_name"] = update.message.text.strip()
@@ -249,19 +227,26 @@ def execute_custom_name(update: Update, context: CallbackContext):
     return INPUT_CUSTOM_DURATION
 
 def execute_custom_duration(update: Update, context: CallbackContext):
-    duration = update.message.text.strip()
+    context.user_data["custom_duration"] = update.message.text.strip()
+    update.message.reply_text("➡️ **Enter Max Devices / Slots (e.g., 1, 5, 9999):**", reply_markup=ForceReply(selective=True), parse_mode="Markdown")
+    return INPUT_CUSTOM_MAX
+
+def execute_custom_max(update: Update, context: CallbackContext):
+    max_dev = update.message.text.strip()
     name = context.user_data.get("custom_name")
+    duration = context.user_data.get("custom_duration")
     panel_url = context.user_data.get("panel_url")
     db_choice = context.user_data.get("db")
     db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        r = requests.get(f"{panel_url}/customkey?name={name}&duration={duration}", timeout=15)
+        # Ipinapasa na natin ang &max= parameter sa url request!
+        r = requests.get(f"{panel_url}/customkey?name={name}&duration={duration}&max={max_dev}", timeout=15)
         if r.status_code == 200:
             key_data = r.json()
             generated_key = key_data.get("key")
             
-            msg = f"🎁 **CUSTOM KEY CREATED**\n━━━━━━━━━━━━━━━━━━━━\n🔰 DB: `{db_name}`\n🔑 KEY: `{generated_key}`\n⏳ DURATION: `{duration}`\n🚫 SLOTS: 1 Device\n━━━━━━━━━━━━━━━━━━━━"
+            msg = f"🎁 **CUSTOM KEY CREATED**\n━━━━━━━━━━━━━━━━━━━━\n🔰 DB: `{db_name}`\n🔑 KEY: `{generated_key}`\n⏳ DURATION: `{duration}`\n🚫 SLOTS: {max_dev} Device(s)\n━━━━━━━━━━━━━━━━━━━━"
             update.message.reply_text(msg, parse_mode="Markdown")
         else:
             update.message.reply_text("❌ Failed to create custom key. Name might already exist.")
@@ -269,24 +254,19 @@ def execute_custom_duration(update: Update, context: CallbackContext):
         update.message.reply_text(f"❌ Error: {e}")
     return ConversationHandler.END
 
-# Cancel Conversation
 def cancel(update: Update, context: CallbackContext):
     update.message.reply_text("❌ Process cancelled.")
     return ConversationHandler.END
 
-import logging
-
-# Opsyonal: I-enable ang logging para mas makita mo ang detalye sa Render logs
+# ======================
+# ERROR LOGGING & HANDLING
+# ======================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def error_handler(update: Update, context: CallbackContext):
-    """Sinasalo nito ang mga error na dulot ng Network TimedOut o Telegram API issues."""
     logger.warning(f'Update "{update}" caused error "{context.error}"')
-    
-    # Kung network timeout lang, pwedeng hayaan lang natin para mag-retry ang bot nang kusa
     if "Timed out" in str(context.error):
-        print("⚠️ Telegram network timeout. Retrying...")
         return
         
 # ======================
@@ -296,7 +276,6 @@ def main():
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
-    # Setup Conversation Handler para sa Flow
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -310,13 +289,12 @@ def main():
             INPUT_RESET_KEY: [MessageHandler(Filters.text & ~Filters.command, execute_reset)],
             INPUT_CUSTOM_NAME: [MessageHandler(Filters.text & ~Filters.command, execute_custom_name)],
             INPUT_CUSTOM_DURATION: [MessageHandler(Filters.text & ~Filters.command, execute_custom_duration)],
+            INPUT_CUSTOM_MAX: [MessageHandler(Filters.text & ~Filters.command, execute_custom_max)],
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )
 
     dp.add_handler(conv_handler)
-    
-    # 🌟 DAGDAGAN MO NITO DITO SA DULO:
     dp.add_error_handler(error_handler)
 
     updater.start_polling()

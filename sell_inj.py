@@ -101,13 +101,16 @@ def handle_db(update: Update, context: CallbackContext):
     query.answer()
     
     if query.data == "back_main":
-        # Ibabalik sa start menu
+        # I-delete ang lumang menu para malinis
+        try: query.message.delete()
+        except: pass
+        
         keyboard = [
             [InlineKeyboardButton("🔑 Generate Key", callback_data="act_gen"), InlineKeyboardButton("🔄 Reset Key", callback_data="act_reset")],
             [InlineKeyboardButton("🚫 Revoke Key", callback_data="act_revoke"), InlineKeyboardButton("📋 List Keys", callback_data="act_list")],
             [InlineKeyboardButton("📊 Stats", callback_data="act_stats"), InlineKeyboardButton("🔥 Custom Key", callback_data="act_custom")]
         ]
-        query.edit_message_text("🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        context.bot.send_message(chat_id=query.message.chat_id, text="🎮 **KAZE CENTRAL CONTROL PANEL**\n\nPumili ng aksyon sa ibaba:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return SELECT_ACTION
 
     db_choice = query.data.replace("db_", "")
@@ -118,6 +121,10 @@ def handle_db(update: Update, context: CallbackContext):
     panel_url = context.user_data.get("panel_url")
     db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
+    # Burahin ang lumang database selection message para hindi mag-conflict sa text edit
+    try: query.message.delete()
+    except: pass
+
     # ---- FLOW 1: GENERATE KEY (DURATIONS MENU) ----
     if action == "gen":
         keyboard = [
@@ -125,17 +132,18 @@ def handle_db(update: Update, context: CallbackContext):
             [InlineKeyboardButton("7 Days", callback_data="dur_7d"), InlineKeyboardButton("30 Days", callback_data="dur_30d")],
             [InlineKeyboardButton("Lifetime", callback_data="dur_lifetime")]
         ]
-        query.edit_message_text(f"🔑 **[{db_name}]**\nSelect Key Duration:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-        return SELECT_DB # Mananatili dito para sa duration click
+        # Gumamit ng send_message sa halip na edit_message_text
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔑 **[{db_name}]**\nSelect Key Duration:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return SELECT_DB
 
     # ---- FLOW 2: REVOKE KEY (INPUT PROMPT) ----
     elif action == "revoke":
-        query.edit_message_text(f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to revoke:**", reply_markup=ForceReply(selective=True))
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to revoke:**", reply_markup=ForceReply(selective=True))
         return INPUT_REVOKE_KEY
 
     # ---- FLOW 3: RESET KEY (INPUT PROMPT) ----
     elif action == "reset":
-        query.edit_message_text(f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True))
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter key to reset:**", reply_markup=ForceReply(selective=True))
         return INPUT_RESET_KEY
 
     # ---- FLOW 4: LIST KEYS ----
@@ -143,14 +151,14 @@ def handle_db(update: Update, context: CallbackContext):
         try:
             r = requests.get(f"{panel_url}/list", timeout=15).json()
             if not r:
-                query.edit_message_text(f"📋 **[{db_name}]**\nNo active keys found.")
+                context.bot.send_message(chat_id=query.message.chat_id, text=f"📋 **[{db_name}]**\nNo active keys found.")
                 return ConversationHandler.END
             msg = f"📋 **ACTIVE KEYS [{db_name}]**\n\n"
             for k in r[:20]:
                 msg += f"`{k['key']}` | Dev: {k['device'] or 'None'}\n"
-            query.edit_message_text(msg, parse_mode="Markdown")
+            context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
         except:
-            query.edit_message_text("❌ Failed to fetch keys from server.")
+            context.bot.send_message(chat_id=query.message.chat_id, text="❌ Failed to fetch keys from server.")
         return ConversationHandler.END
 
     # ---- FLOW 5: STATS ----
@@ -158,14 +166,14 @@ def handle_db(update: Update, context: CallbackContext):
         try:
             r = requests.get(f"{panel_url}/stats", timeout=15).json()
             msg = f"📊 **PANEL STATISTICS [{db_name}]**\n\nTotal Keys: {r['total_keys']}\nActive Keys: {r['active_keys']}\nExpired Keys: {r['expired_keys']}"
-            query.edit_message_text(msg, parse_mode="Markdown")
+            context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
         except:
-            query.edit_message_text("❌ Failed to fetch stats.")
+            context.bot.send_message(chat_id=query.message.chat_id, text="❌ Failed to fetch stats.")
         return ConversationHandler.END
 
-    # ---- FLOW 6: CUSTOM KEY (INPUT NAME PROMPT) ----
+    # ---- FLOW 6: CUSTOM KEY ----
     elif action == "custom":
-        query.edit_message_text(f"🔰 **Database:** {db_name}\n\n➡️ **Enter Custom Name:**", reply_markup=ForceReply(selective=True))
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"🔰 **Database:** {db_name}\n\n➡️ **Enter Custom Name:**", reply_markup=ForceReply(selective=True))
         return INPUT_CUSTOM_NAME
 
     # Pagproseso ng Standard Duration Generation matapos pindutin ang oras
@@ -177,9 +185,9 @@ def handle_db(update: Update, context: CallbackContext):
             key = r.get("key", "ERROR")
             
             msg = f"🔑 **KEY GENERATED**\n━━━━━━━━━━━━━━━━━━━━\n🔰 DB: `{db_name}`\n🔑 KEY: `{key}`\n⏳ EXPIRATION: `{duration}`\n🚫 SLOTS: 1 Device\n━━━━━━━━━━━━━━━━━━━━"
-            query.edit_message_text(msg, parse_mode="Markdown")
+            context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
         except Exception as e:
-            query.edit_message_text(f"❌ Error Generating Key: {e}")
+            context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Error Generating Key: {e}")
         return ConversationHandler.END
 
 # ======================

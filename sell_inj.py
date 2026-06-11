@@ -225,11 +225,25 @@ def execute_revoke(update: Update, context: CallbackContext):
     db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
 
     try:
-        r = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
-        if r.status_code == 200:
-            update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED", parse_mode="Markdown")
+        # Una: Tawagin ang delete route para tuluyang mawala sa Supabase
+        r_delete = requests.get(f"{panel_url}/delete?key={key}", timeout=15)
+        
+        if r_delete.status_code == 200:
+            update.message.reply_text(
+                f"🗑️ **KEY PERMANENTLY DELETED**\n\n"
+                f"**Database:** {db_name}\n"
+                f"**Key:** `{key}`\n"
+                f"**Status:** REMOVED FROM DATABASE\n\n"
+                f"👉 Pwede mo na ulit gamitin ang pangalan na ito sa Custom Key!", 
+                parse_mode="Markdown"
+            )
         else:
-            update.message.reply_text(f"❌ Failed to revoke. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
+            # Kung sakaling lumang backend pa at walang /delete route, dadaan sa dating revoke
+            r_revoke = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
+            if r_revoke.status_code == 200:
+                update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED (Not Deleted)", parse_mode="Markdown")
+            else:
+                update.message.reply_text(f"❌ Failed to process. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
     except Exception as e:
         update.message.reply_text(f"❌ Error: {e}")
     return ConversationHandler.END
@@ -289,36 +303,6 @@ def cancel(update: Update, context: CallbackContext):
     update.message.reply_text("❌ Process cancelled.")
     return ConversationHandler.END
 
-def execute_revoke(update: Update, context: CallbackContext):
-    key = update.message.text.strip()
-    panel_url = context.user_data.get("panel_url")
-    db_choice = context.user_data.get("db")
-    db_name = "CODM INJECTOR" if db_choice == "injector" else "CODM SCRIPT"
-
-    try:
-        # Una: Tawagin ang delete route para tuluyang mawala sa Supabase
-        r_delete = requests.get(f"{panel_url}/delete?key={key}", timeout=15)
-        
-        if r_delete.status_code == 200:
-            update.message.reply_text(
-                f"🗑️ **KEY PERMANENTLY DELETED**\n\n"
-                f"**Database:** {db_name}\n"
-                f"**Key:** `{key}`\n"
-                f"**Status:** REMOVED FROM DATABASE\n\n"
-                f"👉 Pwede mo na ulit gamitin ang pangalan na ito sa Custom Key!", 
-                parse_mode="Markdown"
-            )
-        else:
-            # Kung sakaling lumang backend pa at walang /delete route, dadaan sa dating revoke
-            r_revoke = requests.get(f"{panel_url}/revoke?key={key}", timeout=15)
-            if r_revoke.status_code == 200:
-                update.message.reply_text(f"🚫 **KEY REVOKED**\n\n**Database:** {db_name}\n**Key:** `{key}`\n**Status:** DISABLED (Not Deleted)", parse_mode="Markdown")
-            else:
-                update.message.reply_text(f"❌ Failed to process. Key `{key}` might not exist on {db_name}.", parse_mode="Markdown")
-    except Exception as e:
-        update.message.reply_text(f"❌ Error: {e}")
-    return ConversationHandler.END
-    
 # ======================
 # ERROR LOGGING & HANDLING
 # ======================
